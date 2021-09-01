@@ -1,5 +1,7 @@
 var POST_URL = '';//incoming webhook url
-var numMaxRow = 24;//getMaxRows() is also fine, but the area of spreadsheet may be changed each time it is created.//global variable
+var SHIFT_SPREADSHEET_URL = '';// shift spread sheet URL
+var NUM_MAX_OPERATORS_INTEGRATED = 4; // the number of operators
+
 
 function checkMember(person){
   var members = {'名字':'slack-user-name','名字':'slack-user-name'}//slack-user-name is neither fullname nor displayname //find out on "Manage members" page of slack
@@ -12,9 +14,9 @@ function checkMember(person){
   }
 }
 
+function fetchPassList(sheet,numMaxColumn, numMaxMember){
 
-function fetchPassList(sheet,numMaxRow,numMaxColumn){
-
+  var numMaxRow = 1+ (1+numMaxMember)*8;
   var tmpPassList = sheet.getRange(1,1,numMaxRow,numMaxColumn).getValues();
   var passList = []
 
@@ -31,13 +33,16 @@ function fetchPassList(sheet,numMaxRow,numMaxColumn){
       continue;
     }
     passList.push(tmpSeriesPass);
+    //Logger.log(tmpSeriesPass);
   }
+  
   return passList;
 }
 
 
-function createPassAvailabilityList(sheet,numMaxRow,numMaxColumn){
+function createPassAvailabilityList(sheet,numMaxColumn, numMaxMember){
 
+  var numMaxRow = 1+ (1+numMaxMember)*8;
   var tmpPassList = sheet.getRange(1,1,numMaxRow,numMaxColumn).getValues();
   var passJudgeList = []
 
@@ -61,12 +66,13 @@ function createPassAvailabilityList(sheet,numMaxRow,numMaxColumn){
     }
     passJudgeList.push(tmpJudge)
   }
+  //Logger.log(passJudgeList);
   return passJudgeList
 }
 
-
-function fetchShiftList(sheet,numMaxRow,numMaxColumn,numMaxMember){
-  //var tmpShiftList = sheetOperator.getRange(1,1,numMaxRow,numMaxColumn).getValues();
+function fetchShiftList(sheet,numMaxColumn,numMaxMember){
+  
+  var numMaxRow = 1+ (1+numMaxMember)*8; //each group of passes has up to 8 passes
   var tmpShiftList =sheet.getRange(1,1,numMaxRow,numMaxColumn).getValues();
   var shiftList = [];
 
@@ -84,7 +90,7 @@ function fetchShiftList(sheet,numMaxRow,numMaxColumn,numMaxMember){
         tmpOnePass.push(checkMember(tmpShiftList[rowIndex][columnIndex]));
       }
       
-      if(rowIndex%numMaxMember == 0){
+      if(rowIndex%(numMaxMember+1) == 0){
         tmpOneDay.push(tmpOnePass);
         tmpOnePass = [];
       }  
@@ -95,8 +101,10 @@ function fetchShiftList(sheet,numMaxRow,numMaxColumn,numMaxMember){
     }
     shiftList.push(tmpOneDay);
   }
+  //Logger.log(shiftList);
   return shiftList;
 }
+
 
 
 function postToSlack(message){
@@ -123,16 +131,16 @@ function postToSlack(message){
 
 
 function informShift() {
-  var ss = SpreadsheetApp.openByUrl(''); //shift spreadsheet url
-  var sheetOperator = ss.getSheetByName("従事者シフト");
-  var sheetResponsibleOperator = ss.getSheetByName("責任者シフト");
+  var ss = SpreadsheetApp.openByUrl(SHIFT_SPREADSHEET_URL);
+  var sheet = ss.getSheetByName("全体");
+  var numMaxColumn = sheet.getMaxColumns();
 
-  var numMaxColumn = sheetOperator.getMaxColumns();
 
-  var passList = fetchPassList(sheetOperator,numMaxRow,numMaxColumn, 3);
-  var passJudgeList = createPassAvailabilityList(sheetOperator,numMaxRow,numMaxColumn, 3);
-  var shiftOperator = fetchShiftList(sheetOperator,numMaxRow,numMaxColumn, 3);
-  var shiftResponsibleOperator = fetchShiftList(sheetResponsibleOperator,numMaxRow,numMaxColumn,3);
+  var passList = fetchPassList(sheet,numMaxColumn, NUM_MAX_OPERATORS_INTEGRATED);
+  var passJudgeList = createPassAvailabilityList(sheet,numMaxColumn, NUM_MAX_OPERATORS_INTEGRATED);
+  var shiftOperators = fetchShiftList(sheet,numMaxColumn, NUM_MAX_OPERATORS_INTEGRATED);
+
+  var numStringList = ['①', '②', '③', '④', '➄', '⑥', '⑦', '⑧']; //which pass of a series of passes
 
   var presentTime = new Date();
   var dayIndex = 0;
@@ -147,34 +155,46 @@ function informShift() {
       break;
     }
   }
-
-  //dayIndex=1;
-  var message = "――――　パス情報　"+ Utilities.formatDate(passList[dayIndex][i], "JST", "M/dd (E)") +"～　――――\n";
+  
+  //dayIndex=3;//for debug //regardless of presentTime
+  var message = "\n―――――― " + Utilities.formatDate(passList[dayIndex][0], "JST", "M/dd (E)") + " ――――――\n";
+  
   for(var i=0; i<passList[dayIndex].length; i++){
+
     if(passJudgeList[dayIndex][i] == true){
-      message += Utilities.formatDate(passList[dayIndex][i], "JST", "HH:mm") + "："+ "\n";
-      message += "従事者：　"
-      for(j=0;j<shiftOperator[dayIndex][i].length;j++){
-        message +=" <@" + shiftOperator[dayIndex][i][j] + ">";
+
+      message += numStringList[i] + " " + Utilities.formatDate(passList[dayIndex][i], "JST", "HH:mm") + "："+ "\n";
+
+      message += "担当者：　"
+      for(j=0;j<shiftOperators[dayIndex][i].length;j++){
+        message +=" <@" + shiftOperators[dayIndex][i][j] + ">";
       }
-      message += "\n責任者：　"
-      for(j=0;j<shiftResponsibleOperator[dayIndex][i].length;j++){
-        message +=" <@" + shiftResponsibleOperator[dayIndex][i][j] + ">";
+
+
+      if(i != passList[dayIndex].length-1){
+        if(passList[dayIndex][i+1].getDate() - passList[dayIndex][i].getDate() != 0){
+          message += "\n―――――― " + Utilities.formatDate(passList[dayIndex][i+1], "JST", "M/dd (E)") + " ――――――\n" ;
+        }
+        else{
+          message += "\n--------------------------------------------\n";
+        }
       }
-      message += "\n------------------------------------------------------\n";
+      
     }
     else if(passJudgeList[dayIndex][i] == false){
-      message += Utilities.formatDate(passList[dayIndex][i], "JST", "HH:mm")+ "：　運用なし" + "\n------------------------------------------------------\n";
+      message += numStringList[i] + " " + Utilities.formatDate(passList[dayIndex][i], "JST", "HH:mm")+ "：　運用なし" + "\n--------------------------------------------\n";
       //message +=
     }
     else{
       message = "異常"
       return message;
     }
-    
+
   }
-  message += "\n<|運用従事者(6/14~6/20)>";//fill out url at the left side of "|" to create Link format in Slack
-  message += "\n<|運用責任者(6/14~6/20)>";//fill out url at the left side of "|" to create Link format in Slack
+  message += "\n--------------------------------------------\n";
+  message += "\n<spread sheet area URL|全体(9/5~9/12)>";
+  message += "\n< handover material URL|運用方針>";
+ 
   
   Logger.log(message);
 
@@ -185,12 +205,12 @@ function informShift() {
 
 function setTrigger(){
   var triggerTime = new Date();
-  var ss = SpreadsheetApp.openByUrl('');//spreadsheet url
-  var sheetOperator = ss.getSheetByName("従事者シフト");
-  var numMaxColumn = sheetOperator.getMaxColumns();
-  var passList = fetchPassList(sheetOperator,numMaxRow,numMaxColumn, 3);
-  var passJudgeList = createPassAvailabilityList(sheetOperator,numMaxRow,numMaxColumn, 3);
-
+  var ss = SpreadsheetApp.openByUrl(SHIFT_SPREADSHEET_URL);
+  var sheet = ss.getSheetByName("全体");
+  var numMaxColumn = sheet.getMaxColumns();
+  var passList = fetchPassList(sheet,numMaxColumn, 3);
+  var passJudgeList = createPassAvailabilityList(sheet,numMaxColumn, NUM_MAX_OPERATORS_INTEGRATED);
+  
   for(var i=0; i<passList.length;i++){
     Logger.log(i);
     Logger.log(passList[passList.length-1][0] - triggerTime);
@@ -220,6 +240,6 @@ function setTrigger(){
   }
   Logger.log(executionTime);
   ScriptApp.newTrigger('informShift').timeBased().at(executionTime).create();
-
+  
   return '';
 }
