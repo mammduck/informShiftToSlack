@@ -123,7 +123,7 @@ function postToSlack(message){
 
 
 function informShift() {
-  var ss = SpreadsheetApp.openByUrl(''); //spreadsheet url
+  var ss = SpreadsheetApp.openByUrl(''); //shift spreadsheet url
   var sheetOperator = ss.getSheetByName("従事者シフト");
   var sheetResponsibleOperator = ss.getSheetByName("責任者シフト");
 
@@ -192,14 +192,30 @@ function setTrigger(){
   var passJudgeList = createPassAvailabilityList(sheetOperator,numMaxRow,numMaxColumn, 3);
 
   for(var i=0; i<passList.length;i++){
-    if( passList[i][0] < triggerTime && triggerTime < passList[i+1][0]){
-      var executionTime = new Date(passList[i+1][0]-9*60*60*1000);
+    Logger.log(i);
+    Logger.log(passList[passList.length-1][0] - triggerTime);
+    //delete triger //within 24h from last pass on the shift table
+    if(passList[passList.length-1][0] - triggerTime < 0){
+      var allTriggers = ScriptApp.getProjectTriggers();
+      for (var j = 0; j < allTriggers.length; j++) {
+        ScriptApp.deleteTrigger(allTriggers[j]);
+      }
+      Logger.log("delete all trigers");
+      return '';
+    }   
+    else if( passList[i][0] < triggerTime && triggerTime < passList[i+1][0]){
+      var executionTime = new Date(passList[i+1][0]-12*60*60*1000);
+      Logger.log("trigger set complete");
       break;
     }
-    else if(triggerTime < passList[0][0]){
-      Logger.log(passList[i][0]-9*60*60*1000);
-      var executionTime = new Date(passList[i][0]-9*60*60*1000);
+    else if(triggerTime < passList[0][0] && passList[0][0].getDate() - triggerTime.getDate() <= 1){
+      var executionTime = new Date(passList[i][0]-12*60*60*1000);
+      Logger.log("first trigger set complete");
       break;
+    }
+    else if(i==passList.length-1){
+      Logger.log("too early");
+      return '';
     }
   }
   Logger.log(executionTime);
