@@ -44,21 +44,32 @@ function createPassAvailabilityList(sheet,numMaxColumn, numMaxMember){
 
   var numMaxRow = 1+ (1+numMaxMember)*8;
   var tmpPassList = sheet.getRange(1,1,numMaxRow,numMaxColumn).getValues();
+  
   var passJudgeList = []
 
   for(var columnIndex=0; columnIndex < numMaxColumn;columnIndex++){
     
     var tmpSeriesPass = [];
     var tmpJudge = [];
+    var loopContinueBoolean = false;
 
+    
     for(var rowIndex=0; rowIndex<numMaxRow; rowIndex++){
+      loopContinueBoolean = false;
       if(typeof(tmpPassList[rowIndex][columnIndex])== "object"){
-        if(checkMember(tmpPassList[rowIndex][columnIndex+1])!==false){
-          tmpJudge.push(true);
-        }
-        else{
+        
+        for(var k=0; k<numMaxMember; k++){
+          if(checkMember(tmpPassList[rowIndex-1+k][columnIndex+1])!==false){
+            tmpJudge.push(true);
+            loopContinueBoolean = true;
+            break;
+          }
+          
+        }        
+        if(loopContinueBoolean == false){
           tmpJudge.push(false);
-        }
+        }            
+        
       }
     }
     if(!tmpJudge.length){
